@@ -1,6 +1,7 @@
 # NTH-Bank
 
 Simple, secure banking backend built with FastAPI.
+DB : PostgreSQL
 
 ## Features
 
