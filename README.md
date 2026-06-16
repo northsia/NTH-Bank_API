@@ -57,7 +57,7 @@ Example response:
 ```json
 {
   "success": true,
-  "token": "jwt_token_here",
+  "token": "jwt_token",
   "user": {
     "id": 1,
     "username": "admin"
@@ -66,10 +66,60 @@ Example response:
 }
 ```
 
+## Transfer Money
+
+Transfer funds securely between accounts.
+
+### Endpoint
+
+```http
+POST /api/v1/nth/bank/transfer
+```
+
+### Request
+
+```json
+{
+  "to_user_id": "john_doe",
+  "amount": 250.00
+}
+```
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "transaction_id": 15234321,
+  "amount": 549$,
+  "new_balance": 500$
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "message": "Insufficient balance"
+}
+```
+
+### Authentication
+
+This endpoint requires a valid JWT token.
+
+Example:
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/NTH-Bank.git
+git clone https://github.com/northsia/NTH-Bank.git
 
 cd NTH-Bank
 
