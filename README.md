@@ -47,8 +47,8 @@ Example login request:
 
 ```json
 {
-  "username": "admin",
-  "password": "password"
+  "username": "jhon",
+  "password": "Pas$w0rD."
 }
 ```
 
