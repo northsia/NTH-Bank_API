@@ -60,7 +60,7 @@ Example response:
   "token": "jwt_token",
   "user": {
     "id": 1,
-    "username": "admin"
+    "username": "Adam"
   },
   "balance": 1000.00
 }
