@@ -91,8 +91,8 @@ POST /api/v1/nth/bank/transfer
 {
   "success": true,
   "transaction_id": 15234321,
-  "amount": 549,00,
-  "new_balance": 500,00
+  "amount": 549.00,
+  "new_balance": 500.00
 }
 ```
 
