@@ -119,7 +119,7 @@ Authorization: Bearer <jwt_token>
 ## Installation
 
 ```bash
-git clone https://github.com/northsia/NTH-Bank.git
+git clone https://github.com/northsia/NTH-Bank_API.git
 
 cd NTH-Bank
 
