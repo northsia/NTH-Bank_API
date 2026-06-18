@@ -91,7 +91,8 @@ async def register(request: Request, data: RegisterRequest):
 
         token = create_token(
             nth_uid=user.nth_uid,
-            email=user.email
+            email=user.email,
+            username=user.username
         )
 
         return {
