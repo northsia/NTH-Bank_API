@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+import hashlib
+import base64
+
+from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, HTTPException, Request
 from passlib.context import CryptContext
 
@@ -9,8 +12,6 @@ from models.security.jwt import create_token
 from models.auth.nthid import genth
 from models.security.ratelimiter import limiter
 
-from pydantic import BaseModel, Field, field_validator
-
 router = APIRouter(prefix="/api/v1/nth/auth")
 
 pwd_context = CryptContext(
@@ -19,17 +20,31 @@ pwd_context = CryptContext(
 )
 
 
+def hash_password(password: str) -> str:
+    """Hash password via SHA-256 first to avoid bcrypt's 72-byte limit."""
+    digest = hashlib.sha256(password.encode("utf-8")).digest()
+    safe = base64.b64encode(digest).decode("utf-8")  # always 44 chars
+    return pwd_context.hash(safe)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Verify password using the same SHA-256 + bcrypt pipeline."""
+    digest = hashlib.sha256(plain.encode("utf-8")).digest()
+    safe = base64.b64encode(digest).decode("utf-8")
+    return pwd_context.verify(safe, hashed)
+
+
 class RegisterRequest(BaseModel):
     first_name: str = Field(min_length=2, max_length=50)
     last_name: str = Field(min_length=2, max_length=50)
     email: str = Field(min_length=5, max_length=255)
-    password: str = Field(min_length=4, max_length=72)  # max_length للحروف
+    password: str = Field(min_length=4, max_length=128)
 
     @field_validator("password")
     @classmethod
-    def password_byte_limit(cls, v):
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password must not exceed 72 bytes")
+    def password_byte_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 500:
+            raise ValueError("Password is too long")
         return v
 
 
@@ -45,25 +60,14 @@ async def register(request: Request, data: RegisterRequest):
         email = data.email.strip().lower()
         password = data.password
 
-        # bcrypt limit
-        if len(password.encode("utf-8")) > 72:
-            raise HTTPException(
-                status_code=400,
-                detail="Password must not exceed 72 bytes"
-            )
-
-        # check existing email
-        existing = db.query(User).filter(
-            User.email == email
-        ).first()
-
+        existing = db.query(User).filter(User.email == email).first()
         if existing:
             raise HTTPException(
                 status_code=409,
                 detail="Email already exists"
             )
 
-        hashed_password = pwd_context.hash(password)
+        hashed_password = hash_password(password)
 
         user = User(
             nth_uid=genth(),
