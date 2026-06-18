@@ -9,17 +9,19 @@ from models.security.jwt import create_token
 from models.auth.nthid import genth
 from models.security.ratelimiter import limiter
 
-
 router = APIRouter(prefix="/api/v1/nth/auth")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
 
 
 class RegisterRequest(BaseModel):
-    first_name: str
-    last_name: str
-    email: str
-    password: str = Field(min_length=4)
+    first_name: str = Field(min_length=2, max_length=50)
+    last_name: str = Field(min_length=2, max_length=50)
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=4, max_length=72)
 
 
 @router.post("/register")
@@ -29,12 +31,19 @@ async def register(request: Request, data: RegisterRequest):
     db = SessionLocal()
 
     try:
-        first_name = data.first_name.strip().lower()
-        last_name = data.last_name.strip().lower()
+        first_name = data.first_name.strip()
+        last_name = data.last_name.strip()
         email = data.email.strip().lower()
         password = data.password
 
-        # check email exists
+        # bcrypt limit
+        if len(password.encode("utf-8")) > 72:
+            raise HTTPException(
+                status_code=400,
+                detail="Password must not exceed 72 bytes"
+            )
+
+        # check existing email
         existing = db.query(User).filter(
             User.email == email
         ).first()
@@ -69,7 +78,6 @@ async def register(request: Request, data: RegisterRequest):
 
         token = create_token(
             nth_uid=user.nth_uid,
-            username=user.username,
             email=user.email
         )
 
@@ -88,9 +96,16 @@ async def register(request: Request, data: RegisterRequest):
             }
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Registration failed: {str(e)}"
+        )
 
     finally:
         db.close()
