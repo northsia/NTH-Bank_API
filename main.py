@@ -1,6 +1,4 @@
 from fastapi import FastAPI
-from openai import models
-
 #----------------------ROUTES-----------------------#
 
 from models.auth.login import router as login_router
