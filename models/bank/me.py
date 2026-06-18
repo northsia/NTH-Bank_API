@@ -20,30 +20,35 @@ def get_db():
 
 @router.get("/me")
 @limiter.limit("50/minute")
+@router.get("/me")
+@limiter.limit("50/minute")
 async def me(
-    user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-    request: Request = None
-    ):
+    request: Request,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
 
-    user_id = user["user_id"]
+    nth_uid = current_user["nth_uid"]
 
-    # get user
-    db_user = db.query(User).filter(User.id == user_id).first()
+    db_user = db.query(User).filter(
+        User.nth_uid == nth_uid
+    ).first()
 
     if not db_user:
-        raise HTTPException(404, "User not found")
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # get account
-    account = db.query(Account).filter(Account.user_id == user_id).first()
+    account = db.query(Account).filter(
+        Account.nth_uid == nth_uid
+    ).first()
 
     if not account:
-        raise HTTPException(404, "Account not found")
+        raise HTTPException(status_code=404, detail="Account not found")
 
     return {
         "user": {
-            "id": db_user.id,
-            "username": db_user.username
+            "nth_uid": db_user.nth_uid,
+            "username": db_user.username,
+            "email": db_user.email 
         },
         "account": {
             "balance": float(account.balance),

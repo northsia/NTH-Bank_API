@@ -1,5 +1,6 @@
-from fastapi import Request, HTTPException, Depends
+from fastapi import Request, HTTPException
 from models.security.jwt import verify_token
+
 
 def get_current_user(request: Request):
 
@@ -15,6 +16,23 @@ def get_current_user(request: Request):
 
     try:
         payload = verify_token(token)
-        return payload  # contains user_id, username
-    except:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        if "nth_uid" not in payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token payload"
+            )
+
+        return {
+            "nth_uid": payload["nth_uid"],
+            "username": payload["username"]
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
+        )

@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-
 from fastapi import APIRouter, HTTPException, Request
 from passlib.context import CryptContext
 
@@ -7,7 +6,7 @@ from models.databases.database import SessionLocal
 from models.auth.user import User
 from models.bank.account import Account
 from models.security.jwt import create_token
-
+from models.auth.nthid import genth
 from models.security.ratelimiter import limiter
 
 
@@ -17,8 +16,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=6, max_length=100)
+    first_name: str
+    last_name: str
+    email: str
+    password: str = Field(min_length=4)
 
 
 @router.post("/register")
@@ -28,34 +29,36 @@ async def register(request: Request, data: RegisterRequest):
     db = SessionLocal()
 
     try:
-        username = data.username.strip().lower()
+        first_name = data.first_name.strip().lower()
+        last_name = data.last_name.strip().lower()
+        email = data.email.strip().lower()
+        password = data.password
 
-        # check exists
+        # check email exists
         existing = db.query(User).filter(
-            User.username == username
+            User.email == email
         ).first()
 
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail="Username already exists"
+                detail="Email already exists"
             )
 
-        # hash password
-        hashed_password = pwd_context.hash(data.password)
+        hashed_password = pwd_context.hash(password)
 
-        # create user
         user = User(
-            username=username,
+            nth_uid=genth(),
+            username=f"{first_name} {last_name}",
+            email=email,
             password=hashed_password
         )
 
         db.add(user)
         db.flush()
 
-        # create account
         account = Account(
-            user_id=user.id,
+            nth_uid=user.nth_uid,
             balance=0,
             currency="USD",
             status="active"
@@ -64,27 +67,30 @@ async def register(request: Request, data: RegisterRequest):
         db.add(account)
         db.commit()
 
-        token = create_token(user.id, user.username)
+        token = create_token(
+            nth_uid=user.nth_uid,
+            username=user.username,
+            email=user.email
+        )
 
         return {
             "success": True,
             "token": token,
             "user": {
-                "id": user.id,
-                "username": user.username
+                "username": user.username,
+                "nth_uid": user.nth_uid,
+                "email": user.email
+            },
+            "account": {
+                "balance": float(account.balance),
+                "currency": account.currency,
+                "status": account.status
             }
         }
 
-    except HTTPException as e:
+    except Exception as e:
         db.rollback()
-        raise e
-
-    except Exception:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="Registration failed"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
     finally:
         db.close()

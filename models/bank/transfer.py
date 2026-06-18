@@ -12,20 +12,20 @@ from models.bank.transaction import Transaction
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/nth/transfer")
+router = APIRouter(prefix="/api/v1/nth/bank/transfer")
 
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-MAX_TRANSFER_AMOUNT = Decimal("1000000.00")
+MAX_TRANSFER_AMOUNT = Decimal("100000.00")
 
 
 # ---------------------------
 # REQUEST MODEL
 # ---------------------------
 class TransferRequest(BaseModel):
-    to_user_id: int = Field(gt=0)
+    to_nth_uid: str
     amount: Decimal = Field(gt=0, le=MAX_TRANSFER_AMOUNT)
 
 
@@ -43,113 +43,56 @@ def get_db():
 # ---------------------------
 # TRANSFER ENDPOINT
 # ---------------------------
-@router.post("/", status_code=status.HTTP_200_OK)
+@router.post("/", status_code=200)
 async def transfer(
     data: TransferRequest,
-    user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from_nth_uid = current_user["nth_uid"]
 
-    from_user_id = user["user_id"]
+    if from_nth_uid == data.to_nth_uid:
+        raise HTTPException(400, "Cannot transfer to yourself")
 
-    # ---------------------------
-    # 1. prevent self transfer
-    # ---------------------------
-    if from_user_id == data.to_user_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot transfer to yourself"
-        )
-
-    # ---------------------------
-    # 2. lock accounts (deadlock safe)
-    # ---------------------------
-    ids_in_order = sorted([from_user_id, data.to_user_id])
-
+    # Lock both accounts in one query
     accounts = (
         db.query(Account)
-        .filter(Account.user_id.in_(ids_in_order))
-        .order_by(Account.user_id)
+        .filter(Account.nth_uid.in_([from_nth_uid, data.to_nth_uid]))
         .with_for_update()
         .all()
     )
 
-    account_map = {acc.user_id: acc for acc in accounts}
+    account_map = {a.nth_uid: a for a in accounts}
+    sender   = account_map.get(from_nth_uid)
+    receiver = account_map.get(data.to_nth_uid)
 
-    sender = account_map.get(from_user_id)
-    receiver = account_map.get(data.to_user_id)
-
-    # ---------------------------
-    # 3. validations
-    # ---------------------------
     if not sender or not receiver:
-        raise HTTPException(
-            status_code=404,
-            detail="Account not found"
-        )
-
-    if sender.status != "active":
-        raise HTTPException(
-            status_code=403,
-            detail="Sender account is not active"
-        )
-
-    if receiver.status != "active":
-        raise HTTPException(
-            status_code=403,
-            detail="Receiver account is not active"
-        )
+        raise HTTPException(404, "Account not found")
 
     if sender.balance < data.amount:
-        raise HTTPException(
-            status_code=400,
-            detail="Insufficient balance"
-        )
+        raise HTTPException(400, "Insufficient balance")
 
-    # ---------------------------
-    # 4. atomic transfer
-    # ---------------------------
     try:
-        sender.balance -= data.amount
+        sender.balance   -= data.amount
         receiver.balance += data.amount
 
         tx = Transaction(
-            from_account=sender.id,
-            to_account=receiver.id,
+            from_nth_uid=from_nth_uid,
+            to_nth_uid=data.to_nth_uid,
             amount=data.amount,
             type="transfer"
         )
-
         db.add(tx)
         db.commit()
         db.refresh(tx)
 
-        logger.info(
-            "Transfer success: from_user=%s to_user=%s amount=%s tx_id=%s",
-            from_user_id,
-            data.to_user_id,
-            data.amount,
-            tx.id,
-        )
-
-        return {
-            "success": True,
-            "transaction_id": tx.id,
-            "amount": str(data.amount),
-            "new_balance": str(sender.balance)
-        }
-
-    except Exception:
+    except Exception as e:
         db.rollback()
+        logger.exception("Transfer failed")
+        raise HTTPException(500, "Transfer failed, please try again")
 
-        logger.exception(
-            "Transfer failed: from_user=%s to_user=%s amount=%s",
-            from_user_id,
-            data.to_user_id,
-            data.amount,
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail="Transfer failed. Please try again later."
-        )
+    return {
+        "success": True,
+        "transaction_id": tx.id,
+        "sender_balance": str(sender.balance)
+    }
